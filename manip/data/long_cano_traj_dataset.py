@@ -6,6 +6,7 @@ import numpy as np
 import joblib 
 import trimesh  
 import json 
+import tempfile 
 
 import matplotlib.pyplot as plt
 
@@ -706,6 +707,41 @@ class LongCanoObjectTrajDataset(Dataset):
                 obj_bps_npy_path = os.path.join(self.dest_obj_bps_npy_folder, seq_name+"_"+str(index)+".npy") 
         else:
             obj_bps_npy_path = os.path.join(self.rest_object_geo_folder, object_name+".npy")
+
+        if not os.path.exists(obj_bps_npy_path):
+            os.makedirs(os.path.dirname(obj_bps_npy_path), exist_ok=True)
+
+            window_obj_rot_mat = torch.from_numpy(self.window_data_dict[index]['obj_rot_mat']).float()
+            obj_com_pos = torch.from_numpy(self.window_data_dict[index]['window_obj_com_pos']).float()
+
+            rest_obj_path = os.path.join(self.rest_object_geo_folder, object_name + ".ply")
+            if not os.path.exists(rest_obj_path):
+                raise FileNotFoundError(
+                    f"Rest pose object mesh not found: {rest_obj_path}. "
+                    "Expected `processed_data/rest_object_geo/<object>.ply`."
+                )
+            rest_mesh = trimesh.load_mesh(rest_obj_path)
+            rest_verts = torch.from_numpy(np.asarray(rest_mesh.vertices)).float()
+
+            if self.use_first_frame_bps or self.use_random_frame_bps:
+                obj_verts = self.load_object_geometry_w_rest_geo(window_obj_rot_mat, obj_com_pos, rest_verts)
+                object_bps = self.compute_object_geo_bps(obj_verts, obj_com_pos)
+            else:
+                center_verts = torch.zeros(1, 3).to(rest_verts.device)
+                object_bps = self.compute_object_geo_bps(rest_verts[None], center_verts)
+
+            tmp_dir = os.path.dirname(obj_bps_npy_path) or "."
+            with tempfile.NamedTemporaryFile(dir=tmp_dir, suffix=".npy", delete=False) as f:
+                tmp_path = f.name
+            try:
+                np.save(tmp_path, object_bps.detach().cpu().numpy())
+                os.replace(tmp_path, obj_bps_npy_path)
+            finally:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
 
         obj_bps_data = np.load(obj_bps_npy_path) # T X N X 3 
         obj_bps_data = torch.from_numpy(obj_bps_data) 

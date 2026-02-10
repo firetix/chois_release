@@ -6,6 +6,7 @@ import numpy as np
 import joblib 
 import trimesh  
 import json 
+import tempfile 
 
 import matplotlib.pyplot as plt
 
@@ -439,7 +440,37 @@ class UnseenCanoObjectTrajDataset(Dataset):
         rest_human_offsets = self.new_window_data_dict[index]['rest_human_offsets'] 
             
         obj_bps_npy_path = os.path.join(self.dest_obj_bps_npy_folder, seq_name+"_"+object_name+".npy") 
-      
+
+        if not os.path.exists(obj_bps_npy_path):
+            os.makedirs(os.path.dirname(obj_bps_npy_path), exist_ok=True)
+
+            rest_obj_path = os.path.join(self.rest_object_geo_folder, object_name + ".ply")
+            if not os.path.exists(rest_obj_path):
+                raise FileNotFoundError(
+                    f"Unseen object mesh not found: {rest_obj_path}. "
+                    "Expected `UNSEEN_OBJECT_GEO_DIR/<object>.ply` or "
+                    "`processed_data/unseen_objects_data/selected_rotated_zeroed_obj_files/<object>.ply`."
+                )
+
+            rest_mesh = trimesh.load_mesh(rest_obj_path)
+            rest_verts = torch.from_numpy(np.asarray(rest_mesh.vertices)).float()
+
+            center_verts = torch.zeros(1, 3).float()
+            object_bps = self.compute_object_geo_bps(rest_verts[None], center_verts)
+
+            tmp_dir = os.path.dirname(obj_bps_npy_path) or "."
+            with tempfile.NamedTemporaryFile(dir=tmp_dir, suffix=".npy", delete=False) as f:
+                tmp_path = f.name
+            try:
+                np.save(tmp_path, object_bps.detach().cpu().numpy())
+                os.replace(tmp_path, obj_bps_npy_path)
+            finally:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
+
         obj_bps_data = np.load(obj_bps_npy_path) # T X N X 3 
         obj_bps_data = torch.from_numpy(obj_bps_data) 
 

@@ -77,6 +77,11 @@ def main() -> int:
     _check_exists(missing, data_root / "test_diffusion_manip_seq_joints24.p", "test sequence pickle")
     _check_exists(
         missing,
+        data_root / f"cano_test_diffusion_manip_window_{args.window}_joints24.p",
+        "canonicalized test windows pickle (avoids expensive preprocessing at runtime)",
+    )
+    _check_exists(
+        missing,
         data_root / f"cano_min_max_mean_std_data_window_{args.window}_joints24.p",
         "min/max/mean/std stats pickle (required for test)",
     )
@@ -98,6 +103,14 @@ def main() -> int:
     # Meshes + text annotations are used during sampling/vis.
     _check_dir_nonempty(missing, data_root / "captured_objects", "captured_objects folder")
     _check_dir_nonempty(missing, data_root / "omomo_text_anno_json_data", "text annotations folder", glob_pat="*.json")
+
+    # Rest pose meshes are used for object reconstruction and for generating missing BPS caches on-demand.
+    _check_dir_nonempty(
+        missing,
+        data_root / "rest_object_geo",
+        "rest object geometry folder",
+        glob_pat="*.ply",
+    )
 
     # Blender assets for video rendering.
     _check_exists(missing, data_root / "blender_files" / "floor_colorful_mat.blend", "Blender floor scene .blend")

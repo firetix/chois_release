@@ -18,7 +18,10 @@ Setup (one time)
    - modal token new
 
 2) Upload assets from your laptop into a Modal Volume:
-   - modal run tools/modal_chois_demo.py::upload_assets
+   - (Recommended) smoke-test subset:
+       modal run tools/modal_chois_demo.py::upload_assets_smoke_single_window --max-test-seqs 2
+   - (Full) everything under processed_data/ (multi-GB, slow):
+       modal run tools/modal_chois_demo.py::upload_assets
 
 Then run the smoke test:
    - modal run tools/modal_chois_demo.py --max-test-seqs 2
@@ -93,6 +96,156 @@ def upload_assets(
     print("- /processed_data/...")
     print("- /pretrained_models/model-10.pt")
 
+@app.local_entrypoint()
+def upload_assets_smoke_single_window(
+    max_test_seqs: int = 2,
+    window: int = 120,
+    processed_data_dir: str = str(REPO_ROOT / "processed_data"),
+    pretrained_models_dir: str = str(REPO_ROOT / "pretrained_models"),
+) -> None:
+    """
+    Upload a smaller subset of assets sufficient to run the `single_window` smoke test for the
+    first `max_test_seqs` validation sequences.
+
+    This avoids uploading the entire multi-GB `processed_data/` folder (which can time out).
+    """
+    try:
+        import joblib  # type: ignore
+    except Exception as e:  # pragma: no cover
+        raise SystemExit(
+            "joblib is required locally to compute the minimal upload set. "
+            "Install it with: python3 -m pip install -U joblib"
+        ) from e
+
+    processed_data = Path(processed_data_dir).expanduser().resolve()
+    pretrained_models = Path(pretrained_models_dir).expanduser().resolve()
+
+    cano_test_pkl = processed_data / f"cano_test_diffusion_manip_window_{window}_joints24.p"
+    if not cano_test_pkl.exists():
+        raise SystemExit(f"Missing required pickle: {cano_test_pkl}")
+
+    # Mirror CanoObjectTrajDataset filtering used by the demo:
+    # - only windows starting at t=0
+    # - only sequences with text annotations present
+    # - only windows with length >= window
+    window_data = joblib.load(cano_test_pkl)
+    objects: list[str] = []
+    kept = 0
+    for _, w in window_data.items():
+        if int(w.get("start_t_idx", -1)) != 0:
+            continue
+        motion = w.get("motion", None)
+        if motion is None or getattr(motion, "shape", (0,))[0] < window:
+            continue
+        seq_name = w.get("seq_name", "")
+        if not seq_name:
+            continue
+        text_json = processed_data / "omomo_text_anno_json_data" / f"{seq_name}.json"
+        if not text_json.exists():
+            continue
+
+        objects.append(seq_name.split("_")[1])
+        kept += 1
+        if kept >= max_test_seqs:
+            break
+
+    if not objects:
+        raise SystemExit(
+            "Could not determine object names for the smoke test. "
+            "Check that `omomo_text_anno_json_data/` exists and contains per-sequence JSON files."
+        )
+
+    unique_objects = sorted(set(objects))
+    print(f"Smoke upload target objects ({len(unique_objects)}): {', '.join(unique_objects)}")
+
+    # Base processed_data files/dirs required by `tools/check_demo_prereqs.py` + trainer in smoke mode.
+    required_files = [
+        "test_diffusion_manip_seq_joints24.p",
+        f"cano_test_diffusion_manip_window_{window}_joints24.p",
+        f"cano_min_max_mean_std_data_window_{window}_joints24.p",
+    ]
+    required_dirs = [
+        "captured_objects",
+        "contact_labels_w_semantics_npy_files",
+        "omomo_text_anno_json_data",
+        "rest_object_geo",
+    ]
+
+    for rel in required_files:
+        p = processed_data / rel
+        if not p.exists():
+            raise SystemExit(f"Missing required file: {p}")
+    for rel in required_dirs:
+        p = processed_data / rel
+        if not p.exists():
+            raise SystemExit(f"Missing required dir: {p}")
+
+    # Required SMPL models.
+    smpl_all_models = processed_data / "smpl_all_models"
+    smpl_required = [
+        smpl_all_models / "smplx" / "SMPLX_MALE.npz",
+        smpl_all_models / "smplx" / "SMPLX_FEMALE.npz",
+        smpl_all_models / "smplh_amass" / "male" / "model.npz",
+    ]
+    for p in smpl_required:
+        if not p.exists():
+            raise SystemExit(f"Missing required SMPL model file: {p}")
+
+    # Required Blender floor scene file (checked by prereq checker; not used in --compute_metrics mode).
+    floor_blend = processed_data / "blender_files" / "floor_colorful_mat.blend"
+    if not floor_blend.exists():
+        raise SystemExit(f"Missing required Blender scene: {floor_blend}")
+
+    # Required SDF files for guidance.
+    sdf_dir = processed_data / "rest_object_sdf_256_npy_files"
+    sdf_files: list[Path] = []
+    for obj in unique_objects:
+        for suffix in [".ply.npy", ".ply.json"]:
+            p = sdf_dir / f"{obj}{suffix}"
+            if not p.exists():
+                raise SystemExit(f"Missing required object SDF file: {p}")
+            sdf_files.append(p)
+
+    ckpt = pretrained_models / "model-10.pt"
+    if not ckpt.exists():
+        raise SystemExit(f"Missing required checkpoint: {ckpt}")
+
+    with assets_vol.batch_upload(force=True) as batch:
+        # processed_data/ base
+        for rel in required_files:
+            batch.put_file(str(processed_data / rel), f"/processed_data/{rel}")
+        for rel in required_dirs:
+            batch.put_directory(_as_dir(processed_data / rel), f"/processed_data/{rel}")
+
+        # Blender file
+        batch.put_file(
+            str(floor_blend),
+            "/processed_data/blender_files/floor_colorful_mat.blend",
+        )
+
+        # Only the SDF npy+json files needed for this smoke test (avoid uploading *.obj).
+        for p in sdf_files:
+            batch.put_file(str(p), f"/processed_data/rest_object_sdf_256_npy_files/{p.name}")
+
+        # SMPL models (minimal subset)
+        batch.put_file(
+            str(smpl_all_models / "smplx" / "SMPLX_MALE.npz"),
+            "/processed_data/smpl_all_models/smplx/SMPLX_MALE.npz",
+        )
+        batch.put_file(
+            str(smpl_all_models / "smplx" / "SMPLX_FEMALE.npz"),
+            "/processed_data/smpl_all_models/smplx/SMPLX_FEMALE.npz",
+        )
+        batch.put_file(
+            str(smpl_all_models / "smplh_amass" / "male" / "model.npz"),
+            "/processed_data/smpl_all_models/smplh_amass/male/model.npz",
+        )
+
+        # Checkpoint
+        batch.put_file(str(ckpt), "/pretrained_models/model-10.pt")
+
+    print(f"Uploaded smoke-test subset to volume: {ASSETS_VOLUME_NAME}")
+
 
 @app.function(
     gpu=GPU_TYPE,
@@ -100,7 +253,7 @@ def upload_assets(
     memory=MEMORY_MIB,
     timeout=TIMEOUT_S,
     volumes={
-        "/data": assets_vol.read_only(),
+        "/data": assets_vol,
         "/results": results_vol,
     },
 )
@@ -112,6 +265,9 @@ def smoke_single_window(max_test_seqs: int = 2) -> str:
     """
     env = os.environ.copy()
     env.setdefault("WANDB_MODE", "disabled")
+    # Override Dockerfile defaults: assets are mounted under /data in Modal.
+    env.setdefault("SMPL_ALL_MODELS_DIR", "/data/processed_data/smpl_all_models")
+    env.setdefault("SMPLH_PATH", "/data/processed_data/smpl_all_models/smplh_amass")
 
     # Fail fast with a clear message if assets are not present on the volume.
     subprocess.run(
@@ -153,6 +309,7 @@ def smoke_single_window(max_test_seqs: int = 2) -> str:
     ]
 
     subprocess.run(cmd, check=True, cwd="/workspace", env=env)
+    assets_vol.commit()
     results_vol.commit()
 
     return "/results/chois_single_window_results"
@@ -166,4 +323,3 @@ def main(max_test_seqs: int = 2) -> None:
     """
     out_dir = smoke_single_window.remote(max_test_seqs=max_test_seqs)
     print(f"Smoke test complete. Results in volume '{RESULTS_VOLUME_NAME}' at: {out_dir}")
-
