@@ -75,6 +75,11 @@ python tools/check_demo_prereqs.py --demo single_window
 docker compose run --rm chois-gpu sh scripts/test_chois_single_window.sh
 ```
 
+Smoke test (no Blender rendering; first 2 sequences only):
+```
+docker compose run --rm chois-gpu sh scripts/test_chois_single_window.sh --compute_metrics --max_test_seqs=2
+```
+
 Long sequence in scene:
 ```
 python tools/check_demo_prereqs.py --demo long_seq

@@ -1066,7 +1066,10 @@ class Trainer(object):
         dest_res_for_eval_npz_folder, dest_metric_folder, dest_out_vis_folder, \
         dest_out_gt_vis_folder, dest_out_obj_folder, dest_out_text_json_folder = self.prep_res_folders() 
 
+        max_test_seqs = int(getattr(self.opt, "max_test_seqs", 0) or 0)
         for s_idx, val_data_dict in enumerate(test_loader):
+            if max_test_seqs > 0 and s_idx >= max_test_seqs:
+                break
 
             seq_name_list = val_data_dict['seq_name']
             object_name_list = val_data_dict['obj_name']
@@ -2210,14 +2213,19 @@ class Trainer(object):
             "frl_apartment_4_sub17_smallbox_018_smallbox_pidx_11_sample_cnt_0", \
             "frl_apartment_4_sub17_smallbox_018_smallbox_pidx_8_sample_cnt_0"]
 
+        max_test_seqs = int(getattr(self.opt, "max_test_seqs", 0) or 0)
+        processed_seq_cnt = 0
         # with torch.no_grad():
         for s_idx, val_data_dict in enumerate(test_loader):
+            if max_test_seqs > 0 and processed_seq_cnt >= max_test_seqs:
+                break
 
             seq_name_list = val_data_dict['seq_name']
             object_name_list = val_data_dict['obj_name'] 
 
             if object_name_list[0] not in object_test_seq_dict:
                 continue 
+            processed_seq_cnt += 1
 
             # planned_paths_list, text_list, end_frame_height_range_list = \
             #         self.get_long_planned_path_names() 
@@ -3200,6 +3208,13 @@ def parse_opt():
 
     parser.add_argument("--test_unseen_objects", action="store_true")
 
+    # Fast smoke-testing: limit number of sequences processed in test mode. 0 means all.
+    parser.add_argument(
+        "--max_test_seqs",
+        type=int,
+        default=0,
+        help="Limit number of test sequences processed in --test_sample_res (0 = all).",
+    )
    
     opt = parser.parse_args()
     return opt

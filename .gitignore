@@ -24,3 +24,10 @@ core
 *.mkv
 *.rrd
 *.nfs*
+
+# Local downloads / large demo assets (mounted at runtime; do not commit)
+.downloads/
+processed_data/
+pretrained_models/
+chois_*_results/
+runs/

@@ -16,4 +16,5 @@ python trainer_chois.py \
 --use_long_planned_path \
 --test_object_name="all" \
 --test_scene_name="frl_apartment_4" \
---use_guidance_in_denoising
+--use_guidance_in_denoising \
+"$@"
