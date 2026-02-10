@@ -5,9 +5,20 @@ import imageio
 import numpy as np 
 import shutil 
 
-BLENDER_PATH = "/viscam/u/jiamanli/blender-3.6.3-linux-x64/blender"
-BLENDER_UTILS_ROOT_FOLDER = "/move/u/jiamanli/github/chois_release/manip/vis" 
-BLENDER_SCENE_FOLDER = "/move/u/jiamanli/for_chois_release/processed_data/blender_files"
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", ".."))
+
+# Allow running out-of-the-box (Docker or local) without hardcoding absolute paths.
+# You can override these via environment variables.
+BLENDER_PATH = os.environ.get("BLENDER_PATH", "blender")
+BLENDER_UTILS_ROOT_FOLDER = os.environ.get(
+    "BLENDER_UTILS_ROOT_FOLDER",
+    os.path.join(_REPO_ROOT, "manip", "vis"),
+)
+BLENDER_SCENE_FOLDER = os.environ.get(
+    "BLENDER_SCENE_FOLDER",
+    os.path.join(_REPO_ROOT, "processed_data", "blender_files"),
+)
 
 def images_to_video_w_imageio(img_folder, output_vid_file, fps=30):
     img_files = os.listdir(img_folder)

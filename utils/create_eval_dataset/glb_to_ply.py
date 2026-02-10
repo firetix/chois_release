@@ -2,6 +2,8 @@ import subprocess
 import sys
 import os 
 
+BLENDER_PATH = os.environ.get("BLENDER_PATH", "blender")
+
 def convert_glb_to(blender_path, input_file, output_file, format):
     python_script = f'''
 import bpy
@@ -36,8 +38,7 @@ bpy.ops.export_mesh.{format}(filepath=r"{output_file}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    # Path to Blender executable (Modify if required)
-    BLENDER_PATH = "/viscam/u/jiamanli/blender-3.6.3-linux-x64/blender"
+    # Uses `BLENDER_PATH` env var (defaults to `blender` in PATH).
 
     scene_root_folder = "/move/u/jiamanli/datasets/semantic_manip/scene_data/hm3d-val-habitat-v0.2"
     scene_names = os.listdir(scene_root_folder)

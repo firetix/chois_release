@@ -1,0 +1,29 @@
+.git
+.gitmodules
+.DS_Store
+**/.DS_Store
+**/__pycache__/
+**/*.py[cod]
+
+# Large assets / outputs (mounted at runtime instead)
+processed_data/
+pretrained_models/
+chois_*_results/
+runs/
+
+# Generated artifacts
+*.mp4
+*.gif
+*.webm
+*.mkv
+*.blend
+*.blend1
+*.ply
+*.obj
+*.npz
+*.npy
+*.pkl
+*.log
+
+# Optional marketing image
+chois_teaser.png

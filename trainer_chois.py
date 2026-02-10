@@ -2790,16 +2790,39 @@ class Trainer(object):
 
             # continue 
             if move_to_planned_path is not None:
-                curr_scene_name = planned_scene_names.split("/")[-4]
-                root_blend_file_folder = "/move/u/jiamanli/datasets/FullBodyManipCapture/processed_manip_data/replica_blender_files"
-                
-                # Top-down view visualization 
-                curr_scene_blend_path = os.path.join(root_blend_file_folder, self.test_scene_name+"_topview.blend")
-                # if not os.path.exists(dest_out_vid_path):
-                if not save_obj_only:
-                    run_blender_rendering_and_save2video(mesh_save_folder, out_rendered_img_folder, out_vid_file_path, \
-                            condition_folder=ball_mesh_save_folder, vis_object=True, vis_condition=True, \
-                            scene_blend_path=curr_scene_blend_path) 
+                # Top-down scene visualization. The original code used an internal absolute path; for
+                # release/Docker we resolve scenes from the processed data folder (or an override env var).
+                root_blend_file_folder = (
+                    os.environ.get("CHOIS_BLENDER_SCENE_FOLDER")
+                    or os.environ.get("BLENDER_SCENE_FOLDER")
+                    or os.path.join(self.data_root_folder, "blender_files")
+                )
+                candidate_blend_paths = [
+                    os.path.join(root_blend_file_folder, f"{self.test_scene_name}_topview.blend"),
+                    os.path.join(root_blend_file_folder, f"{self.test_scene_name}.blend"),
+                    os.path.join(root_blend_file_folder, "floor_colorful_mat.blend"),
+                ]
+                curr_scene_blend_path = next(
+                    (p for p in candidate_blend_paths if os.path.exists(p)),
+                    candidate_blend_paths[-1],
+                )
+
+                if not os.path.exists(curr_scene_blend_path):
+                    print(
+                        f"[WARN] Blender scene file not found for scene visualization. "
+                        f"Tried: {candidate_blend_paths}. "
+                        "Skipping Blender rendering."
+                    )
+                elif not save_obj_only:
+                    run_blender_rendering_and_save2video(
+                        mesh_save_folder,
+                        out_rendered_img_folder,
+                        out_vid_file_path,
+                        condition_folder=ball_mesh_save_folder,
+                        vis_object=True,
+                        vis_condition=True,
+                        scene_blend_path=curr_scene_blend_path,
+                    )
                 
             else:
                 floor_blend_path = os.path.join(self.data_root_folder, "blender_files/floor_colorful_mat.blend")
@@ -3185,6 +3208,16 @@ if __name__ == "__main__":
     opt = parse_opt()
     opt.save_dir = os.path.join(opt.project, opt.exp_name)
     opt.exp_name = opt.save_dir.split('/')[-1]
+
+    # This codebase was written for CUDA; various modules call `.cuda()` unconditionally.
+    if not torch.cuda.is_available():
+        raise SystemExit(
+            "ERROR: CUDA is required to run CHOIS.\n"
+            "If you are using docker-compose, run the demo with the `chois-gpu` service and ensure the NVIDIA "
+            "Container Toolkit is installed.\n"
+            "If you are running locally, install a CUDA-enabled PyTorch build and verify `nvidia-smi` works."
+        )
+
     device = torch.device(f"cuda:{opt.device}" if torch.cuda.is_available() else "cpu")
     if opt.test_sample_res:
         run_sample(opt, device)

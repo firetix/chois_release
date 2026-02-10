@@ -25,6 +25,23 @@ from manip.lafan1.utils import rotate_at_frame_w_obj
 from manip.data.cano_traj_dataset import get_smpl_parents, quat_fk_torch, quat_ik_torch, local2global_pose 
 
 
+def _resolve_smpl_all_models_dir(data_root_folder: str) -> str:
+    env = os.environ.get("SMPL_ALL_MODELS_DIR")
+    if env:
+        return env
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    candidates = [
+        os.path.join(data_root_folder, "smpl_all_models"),
+        os.path.join(repo_root, "data", "smpl_all_models"),
+        os.path.join(repo_root, "smpl_all_models"),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[0]
+
+
 class UnseenCanoObjectTrajDataset(Dataset):
     def __init__(
         self,
@@ -70,7 +87,10 @@ class UnseenCanoObjectTrajDataset(Dataset):
         self.data_root_folder = data_root_folder 
         self.obj_geo_root_folder = os.path.join(self.data_root_folder, "captured_objects")
         
-        self.rest_object_geo_folder = "/move/u/jiamanli/datasets/semantic_manip/unseen_objects_data/selected_unseen_objects/selected_rotated_zeroed_obj_files"
+        self.rest_object_geo_folder = os.environ.get(
+            "UNSEEN_OBJECT_GEO_DIR",
+            os.path.join(self.data_root_folder, "unseen_objects_data", "selected_rotated_zeroed_obj_files"),
+        )
 
         self.bps_path = "./bps.pt"
 
@@ -128,7 +148,7 @@ class UnseenCanoObjectTrajDataset(Dataset):
         print("Total number of windows for validation:{0}".format(len(self.new_window_data_dict)))
 
         # Prepare SMPLX model 
-        soma_work_base_dir = os.path.join(self.data_root_folder, 'smpl_all_models')
+        soma_work_base_dir = _resolve_smpl_all_models_dir(self.data_root_folder)
         support_base_dir = soma_work_base_dir 
         surface_model_type = "smplx"
         surface_model_male_fname = os.path.join(support_base_dir, surface_model_type, "SMPLX_MALE.npz")

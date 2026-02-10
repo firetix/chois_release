@@ -5,9 +5,17 @@ import imageio
 import numpy as np 
 import shutil 
 
-BLENDER_PATH = "blender-3.6.3-linux-x64/blender" # Put your blender path here 
-BLENDER_UTILS_ROOT_FOLDER = "chois_release/manip/vis" # Put the manip/vis folder absolute path here 
-BLENDER_SCENE_FOLDER = "./processed_data/blender_files" # Put the blender_files folder (where your store .blend files) absolute path here
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, "..", ".."))
+
+# Allow running out-of-the-box (Docker or local) without hardcoding absolute paths.
+# You can still override these via environment variables.
+BLENDER_PATH = os.environ.get("BLENDER_PATH", "blender")
+BLENDER_UTILS_ROOT_FOLDER = os.environ.get("BLENDER_UTILS_ROOT_FOLDER", _THIS_DIR)
+BLENDER_SCENE_FOLDER = os.environ.get(
+    "BLENDER_SCENE_FOLDER",
+    os.path.join(_REPO_ROOT, "processed_data", "blender_files"),
+)
 
 def concat_multiple_videos(input_files, output_file):
     # List of input files

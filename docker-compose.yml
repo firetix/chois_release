@@ -1,0 +1,44 @@
+x-chois-common: &chois_common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: chois_release:dev
+  platform: linux/amd64
+  working_dir: /workspace
+  stdin_open: true
+  tty: true
+  shm_size: "8gb"
+
+  volumes:
+    - .:/workspace
+    - ${PROCESSED_DATA_HOST:-./processed_data}:/workspace/processed_data
+    - ${PRETRAINED_MODELS_HOST:-./pretrained_models}:/workspace/pretrained_models
+    # Optionally mount SMPL models from a separate location (read-only). This overrides the subfolder.
+    - ${SMPL_ALL_MODELS_HOST:-./processed_data/smpl_all_models}:/workspace/processed_data/smpl_all_models:ro
+
+  environment:
+    PYTHONPATH: /workspace
+
+    # Blender config (used by the provided demo scripts).
+    BLENDER_PATH: blender
+    BLENDER_UTILS_ROOT_FOLDER: /workspace/manip/vis
+    BLENDER_SCENE_FOLDER: /workspace/processed_data/blender_files
+    CHOIS_BLENDER_SCENE_FOLDER: /workspace/processed_data/blender_files
+
+    # SMPL model locations.
+    SMPL_ALL_MODELS_DIR: /workspace/processed_data/smpl_all_models
+    SMPLH_PATH: /workspace/processed_data/smpl_all_models/smplh_amass
+
+    TORCH_HOME: /workspace/.cache/torch
+    WANDB_MODE: disabled
+
+services:
+  # CPU-friendly container (useful for build, imports, and prereq checks).
+  # Note: the model code calls `.cuda()` so the actual demos require `chois-gpu`.
+  chois:
+    <<: *chois_common
+
+  # GPU container (Linux + NVIDIA Container Toolkit required).
+  chois-gpu:
+    <<: *chois_common
+    gpus: all

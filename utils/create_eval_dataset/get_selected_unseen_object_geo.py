@@ -114,8 +114,11 @@ def get_selected_obj_subdivided(ori_obj_folder, selected_obj_names, dest_obj_fol
         subdivide_and_export(ori_obj_path, dest_obj_path, subdivisions=2)
         
 def call_blender_to_rotate_obj_on_floor():
-    BLENDER_PATH = "/viscam/u/jiamanli/blender-3.6.3-linux-x64/blender"
-    blender_utils_path = "/viscam/u/jiamanli/github/scene_aware_manip/cvpr2024_utils/create_eval_dataset/blender_rotate_selected_objects.py"
+    BLENDER_PATH = os.environ.get("BLENDER_PATH", "blender")
+    blender_utils_path = os.environ.get(
+        "BLENDER_ROTATE_UTILS",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "blender_rotate_selected_objects.py"),
+    )
     subprocess.call(BLENDER_PATH+" -P "+blender_utils_path+\
             " -b", shell=True) 
 

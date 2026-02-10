@@ -43,10 +43,60 @@ Install other dependencies.
 pip install -r requirements.txt 
 ```
 
-### Prerequisites 
-Please download [SMPL-X](https://smpl-x.is.tue.mpg.de/index.html) and put the model to ```data/smpl_all_models/```.
+## Docker (GPU)
+This repo includes a `Dockerfile` + `docker-compose.yml` that match the paper environment (Ubuntu 20.04, Python 3.8, CUDA 11.3, PyTorch 1.11) and also install Blender for the provided demo scripts.
 
-If you would like to generate visualizations, please download [Blender](https://www.blender.org/download/) first. And modify ```BLENDER_PATH, BLENDER_UTILS_ROOT_FOLDER, BLENDER_SCENE_FOLDER``` in line 8-10 of ```chois_release/manip/vis/blender_vis_mesh_motion.py```. 
+### Requirements
+- Docker
+- NVIDIA Container Toolkit (Linux) to run the demos with GPU (`chois-gpu` service). On macOS/Windows you can still build the image and run prereq checks with the `chois` service, but the model itself requires CUDA.
+
+### Data / models (required)
+You need these folders on your host machine:
+- `processed_data/` (download link in Prerequisites below)
+- `pretrained_models/` (download link below)
+- SMPL models available under `processed_data/smpl_all_models/`:
+  - `smplx/SMPLX_MALE.npz`, `smplx/SMPLX_FEMALE.npz`, `smplx/SMPLX_NEUTRAL.npz`
+  - `smplh_amass/male/model.npz` (used to read the kinematic tree)
+
+If your data/models live elsewhere, set environment variables when running compose:
+- `PROCESSED_DATA_HOST=/abs/path/to/processed_data`
+- `PRETRAINED_MODELS_HOST=/abs/path/to/pretrained_models`
+- `SMPL_ALL_MODELS_HOST=/abs/path/to/smpl_all_models`
+
+### Build
+```
+docker compose build
+```
+
+### Run the provided demos
+Single-window:
+```
+python tools/check_demo_prereqs.py --demo single_window
+docker compose run --rm chois-gpu sh scripts/test_chois_single_window.sh
+```
+
+Long sequence in scene:
+```
+python tools/check_demo_prereqs.py --demo long_seq
+docker compose run --rm chois-gpu sh scripts/test_chois_long_seq_in_scene.sh
+```
+
+### Prerequisites 
+Please download [SMPL-X](https://smpl-x.is.tue.mpg.de/index.html).
+
+This code expects SMPL models under a `smpl_all_models/` folder. By default it will look in:
+- `./processed_data/smpl_all_models/` (recommended for the provided scripts)
+- `./data/smpl_all_models/`
+
+You can also override paths via environment variables:
+- `SMPL_ALL_MODELS_DIR=/abs/path/to/smpl_all_models`
+- `SMPLH_PATH=/abs/path/to/smpl_all_models/smplh_amass` (must contain `male/model.npz`)
+
+If you would like to generate visualizations, please install [Blender](https://www.blender.org/download/).
+Blender paths can be configured via environment variables (no code edits required):
+- `BLENDER_PATH` (defaults to `blender`)
+- `BLENDER_UTILS_ROOT_FOLDER` (defaults to `manip/vis`)
+- `BLENDER_SCENE_FOLDER` (defaults to `processed_data/blender_files`)
 
 Please download all the [data](https://drive.google.com/file/d/1ZG-9--RfUWj5oWYnvcONNuRuxaH_Zpw1/view?usp=sharing) and put ```processed_data``` to your desired location ```your_path/processed_data```.  
 
@@ -67,11 +117,12 @@ Please run the command to generate long sequence first. This will save human and
 ```
 sh scripts/test_chois_long_seq_in_scene.sh 
 ```
-Then edit line 109 and line 110 at ```utils/vis_utils/render_res_w_blender.py``` to call blender and visualize the generated sequence in the given 3D scene.  
+To visualize the generated sequence in the given 3D scene with Blender:
 ```
 cd utils/vis_utils
-python render_res_w_blender.py 
+python render_res_w_blender.py
 ```
+No code edits are required: configure Blender via environment variables (for example `BLENDER_PATH=blender`). If you are running via `docker compose`, Blender is already installed in the image and these env vars are set in `docker-compose.yml`.
 
 ### Training 
 Train CHOIS (generating object motion and human motion given text, object geometry, and initial states). Please replace ```--entity``` with your account name. Note that when you first run this script, it need to extract BPS representation for all the sequences and may take more than 1 hour to finish the data processing. It requires about 32G disk space. 

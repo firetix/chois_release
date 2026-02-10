@@ -21,7 +21,50 @@ from human_body_prior.body_model.body_model import BodyModel
 
 from manip.lafan1.utils import rotate_at_frame_w_obj 
 
-SMPLH_PATH = "/viscam/u/jiamanli/github/hm_interaction/smpl_all_models/smplh_amass"
+def _resolve_smplh_path() -> str:
+    """Resolve the SMPL-H model folder used for `kintree_table` lookups.
+
+    The original code hardcoded an internal lab path. For release/Docker usage we:
+    - prefer `SMPLH_PATH` if set
+    - otherwise try common repo-relative locations
+    """
+    env = os.environ.get("SMPLH_PATH")
+    if env:
+        return env
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    candidates = [
+        os.path.join(repo_root, "processed_data", "smpl_all_models", "smplh_amass"),
+        os.path.join(repo_root, "data", "smpl_all_models", "smplh_amass"),
+        os.path.join(repo_root, "smpl_all_models", "smplh_amass"),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+
+    # Default to a sensible relative path; downstream will raise a clear error if missing.
+    return os.path.join(repo_root, "processed_data", "smpl_all_models", "smplh_amass")
+
+
+SMPLH_PATH = _resolve_smplh_path()
+
+
+def _resolve_smpl_all_models_dir(data_root_folder: str) -> str:
+    """Resolve `smpl_all_models` folder (contains SMPL-X + optional SMPL-H models)."""
+    env = os.environ.get("SMPL_ALL_MODELS_DIR")
+    if env:
+        return env
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    candidates = [
+        os.path.join(data_root_folder, "smpl_all_models"),
+        os.path.join(repo_root, "data", "smpl_all_models"),
+        os.path.join(repo_root, "smpl_all_models"),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[0]
 
 def to_tensor(array, dtype=torch.float32):
     if not torch.is_tensor(array):
@@ -42,7 +85,14 @@ def rotate(points, R):
     return r_points.reshape(shape)
 
 def get_smpl_parents(use_joints24=True):
-    bm_path = os.path.join(SMPLH_PATH, 'male/model.npz')
+    bm_path = os.path.join(SMPLH_PATH, "male", "model.npz")
+    if not os.path.exists(bm_path):
+        raise FileNotFoundError(
+            "SMPL-H model file not found: "
+            f"{bm_path}. "
+            "Set `SMPLH_PATH` to the `smplh_amass` folder (it must contain `male/model.npz`), "
+            "or mount/copy your SMPL models under `./processed_data/smpl_all_models`."
+        )
     npz_data = np.load(bm_path)
     ori_kintree_table = npz_data['kintree_table'] # 2 X 52 
 
@@ -237,7 +287,7 @@ class CanoObjectTrajDataset(Dataset):
             print("Total number of windows for validation:{0}".format(len(self.window_data_dict))) # all, 3224 
 
         # Prepare SMPLX model 
-        soma_work_base_dir = os.path.join(self.data_root_folder, 'smpl_all_models')
+        soma_work_base_dir = _resolve_smpl_all_models_dir(self.data_root_folder)
         support_base_dir = soma_work_base_dir 
         surface_model_type = "smplx"
         surface_model_male_fname = os.path.join(support_base_dir, surface_model_type, "SMPLX_MALE.npz")
