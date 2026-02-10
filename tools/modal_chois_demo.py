@@ -129,6 +129,7 @@ def upload_assets_smoke_single_window(
     # - only sequences with text annotations present
     # - only windows with length >= window
     window_data = joblib.load(cano_test_pkl)
+    seq_names: list[str] = []
     objects: list[str] = []
     kept = 0
     for _, w in window_data.items():
@@ -143,7 +144,11 @@ def upload_assets_smoke_single_window(
         text_json = processed_data / "omomo_text_anno_json_data" / f"{seq_name}.json"
         if not text_json.exists():
             continue
+        contact_npy = processed_data / "contact_labels_w_semantics_npy_files" / f"{seq_name}.npy"
+        if not contact_npy.exists():
+            continue
 
+        seq_names.append(seq_name)
         objects.append(seq_name.split("_")[1])
         kept += 1
         if kept >= max_test_seqs:
@@ -157,6 +162,7 @@ def upload_assets_smoke_single_window(
 
     unique_objects = sorted(set(objects))
     print(f"Smoke upload target objects ({len(unique_objects)}): {', '.join(unique_objects)}")
+    print(f"Smoke upload target sequences ({len(seq_names)}): {', '.join(seq_names)}")
 
     # Base processed_data files/dirs required by `tools/check_demo_prereqs.py` + trainer in smoke mode.
     required_files = [
@@ -164,21 +170,11 @@ def upload_assets_smoke_single_window(
         f"cano_test_diffusion_manip_window_{window}_joints24.p",
         f"cano_min_max_mean_std_data_window_{window}_joints24.p",
     ]
-    required_dirs = [
-        "captured_objects",
-        "contact_labels_w_semantics_npy_files",
-        "omomo_text_anno_json_data",
-        "rest_object_geo",
-    ]
 
     for rel in required_files:
         p = processed_data / rel
         if not p.exists():
             raise SystemExit(f"Missing required file: {p}")
-    for rel in required_dirs:
-        p = processed_data / rel
-        if not p.exists():
-            raise SystemExit(f"Missing required dir: {p}")
 
     # Required SMPL models.
     smpl_all_models = processed_data / "smpl_all_models"
@@ -196,32 +192,69 @@ def upload_assets_smoke_single_window(
     if not floor_blend.exists():
         raise SystemExit(f"Missing required Blender scene: {floor_blend}")
 
-    # Required SDF files for guidance.
+    # Required per-object assets for guidance and object reconstruction.
     sdf_dir = processed_data / "rest_object_sdf_256_npy_files"
+    rest_geo_dir = processed_data / "rest_object_geo"
+    captured_objects_dir = processed_data / "captured_objects"
+
     sdf_files: list[Path] = []
+    rest_geo_files: list[Path] = []
+    captured_obj_files: list[Path] = []
     for obj in unique_objects:
         for suffix in [".ply.npy", ".ply.json"]:
             p = sdf_dir / f"{obj}{suffix}"
             if not p.exists():
                 raise SystemExit(f"Missing required object SDF file: {p}")
             sdf_files.append(p)
+        for suffix in [".ply", ".npy", ".json"]:
+            p = rest_geo_dir / f"{obj}{suffix}"
+            if not p.exists():
+                raise SystemExit(f"Missing required rest object geometry file: {p}")
+            rest_geo_files.append(p)
+        p = captured_objects_dir / f"{obj}_cleaned_simplified.obj"
+        if not p.exists():
+            raise SystemExit(f"Missing required captured object mesh file: {p}")
+        captured_obj_files.append(p)
 
     ckpt = pretrained_models / "model-10.pt"
     if not ckpt.exists():
         raise SystemExit(f"Missing required checkpoint: {ckpt}")
 
+    per_seq_contact_files: list[Path] = []
+    per_seq_text_files: list[Path] = []
+    for seq_name in seq_names:
+        contact_npy = processed_data / "contact_labels_w_semantics_npy_files" / f"{seq_name}.npy"
+        if not contact_npy.exists():
+            raise SystemExit(f"Missing required contact labels file: {contact_npy}")
+        per_seq_contact_files.append(contact_npy)
+
+        text_json = processed_data / "omomo_text_anno_json_data" / f"{seq_name}.json"
+        if not text_json.exists():
+            raise SystemExit(f"Missing required text annotation file: {text_json}")
+        per_seq_text_files.append(text_json)
+
     with assets_vol.batch_upload(force=True) as batch:
         # processed_data/ base
         for rel in required_files:
             batch.put_file(str(processed_data / rel), f"/processed_data/{rel}")
-        for rel in required_dirs:
-            batch.put_directory(_as_dir(processed_data / rel), f"/processed_data/{rel}")
 
         # Blender file
         batch.put_file(
             str(floor_blend),
             "/processed_data/blender_files/floor_colorful_mat.blend",
         )
+
+        # Per-sequence assets needed for the selected smoke sequences.
+        for p in per_seq_contact_files:
+            batch.put_file(str(p), f"/processed_data/contact_labels_w_semantics_npy_files/{p.name}")
+        for p in per_seq_text_files:
+            batch.put_file(str(p), f"/processed_data/omomo_text_anno_json_data/{p.name}")
+
+        # Per-object assets needed for the selected smoke sequences.
+        for p in captured_obj_files:
+            batch.put_file(str(p), f"/processed_data/captured_objects/{p.name}")
+        for p in rest_geo_files:
+            batch.put_file(str(p), f"/processed_data/rest_object_geo/{p.name}")
 
         # Only the SDF npy+json files needed for this smoke test (avoid uploading *.obj).
         for p in sdf_files:
