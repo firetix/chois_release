@@ -32,6 +32,7 @@ Results are written to the `chois-results` volume under:
 
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 import modal
@@ -131,6 +132,7 @@ def upload_assets_smoke_single_window(
     window_data = joblib.load(cano_test_pkl)
     seq_names: list[str] = []
     objects: list[str] = []
+    selected_windows: list[dict] = []
     kept = 0
     for _, w in window_data.items():
         if int(w.get("start_t_idx", -1)) != 0:
@@ -150,6 +152,7 @@ def upload_assets_smoke_single_window(
 
         seq_names.append(seq_name)
         objects.append(seq_name.split("_")[1])
+        selected_windows.append(w)
         kept += 1
         if kept >= max_test_seqs:
             break
@@ -164,10 +167,17 @@ def upload_assets_smoke_single_window(
     print(f"Smoke upload target objects ({len(unique_objects)}): {', '.join(unique_objects)}")
     print(f"Smoke upload target sequences ({len(seq_names)}): {', '.join(seq_names)}")
 
-    # Base processed_data files/dirs required by `tools/check_demo_prereqs.py` + trainer in smoke mode.
+    # Create a slimmed-down version of `cano_test_diffusion_manip_window_...` containing only the selected windows.
+    # Uploading the full file (~300MB) can time out due to expiring S3 tokens during multipart uploads.
+    slim_window_data: dict[int, dict] = {i: w for i, w in enumerate(selected_windows)}
+    tmp_dir = Path(tempfile.mkdtemp(prefix="chois_modal_upload_"))
+    slim_cano_test_pkl = tmp_dir / f"cano_test_diffusion_manip_window_{window}_joints24.p"
+    joblib.dump(slim_window_data, slim_cano_test_pkl)
+    print(f"Slim cano_test pickle size: {slim_cano_test_pkl.stat().st_size / (1024 * 1024):.2f} MiB")
+
+    # Base processed_data files required by `tools/check_demo_prereqs.py` + trainer in smoke mode.
     required_files = [
         "test_diffusion_manip_seq_joints24.p",
-        f"cano_test_diffusion_manip_window_{window}_joints24.p",
         f"cano_min_max_mean_std_data_window_{window}_joints24.p",
     ]
 
@@ -237,6 +247,10 @@ def upload_assets_smoke_single_window(
         # processed_data/ base
         for rel in required_files:
             batch.put_file(str(processed_data / rel), f"/processed_data/{rel}")
+        batch.put_file(
+            str(slim_cano_test_pkl),
+            f"/processed_data/cano_test_diffusion_manip_window_{window}_joints24.p",
+        )
 
         # Blender file
         batch.put_file(
